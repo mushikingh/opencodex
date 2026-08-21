@@ -125,6 +125,8 @@ export interface ProviderRegistryEntry {
   baseUrl: string;
   apiKeyTransport?: OcxProviderConfig["apiKeyTransport"];
   authKind: ProviderAuthKind;
+  /** See `OcxProviderConfig.plainBearerOAuth` — anthropic-adapter OAuth with a vanilla Bearer. */
+  plainBearerOAuth?: boolean;
   codexAccountMode?: CodexAccountMode;
   /** OAuth preset may explicitly honor a persisted API-key billing mode. */
   allowKeyAuthOverride?: boolean;
@@ -2074,6 +2076,29 @@ export const PROVIDER_REGISTRY: readonly ProviderRegistryEntry[] = [
     modelMaxOutputTokens: Object.fromEntries(ZAI_GLM_53_MODELS.map(id => [id, 131_072])),
     modelSupportsReasoningSummaries: Object.fromEntries(ZAI_GLM_5X_MODELS.map(id => [id, true])),
     preserveReasoningContentModels: ZAI_GLM_5X_MODELS,
+  },
+  // Z.ai GLM Coding (Start) Plan — the `builtin:zai-start-plan` entitlement ZCode surfaces, distinct
+  // from the `zai` key provider above (that one is the api.z.ai coding PAYG path, entitlement
+  // `zai-coding-plan`). This plan speaks the Anthropic Messages wire at
+  // zcode.z.ai/api/v1/zcode-plan/anthropic and authenticates with a plain Bearer zcode JWT minted by
+  // the OAuth login (chat.z.ai/api/oauth/authorize → zcode.z.ai/api/v1/oauth/token). ZCode's own
+  // buildStartPlanRuntimeAuthorizationHeaders sends only the bearer and strips Aliyun captcha headers
+  // on this path, so no captcha/device/signature is reproduced — `plainBearerOAuth` selects the
+  // vanilla-bearer shape in the anthropic adapter. Only GLM-5.3 is served here (bracketed [1m] ids
+  // are the OpenAI-path variant); 1M context, 128K output, GLM-5.3's three effective effort tiers.
+  {
+    id: "zai-plan", label: "Z.ai — GLM Coding (Start) Plan", baseUrl: "https://zcode.z.ai/api/v1/zcode-plan/anthropic",
+    adapter: "anthropic", authKind: "oauth", plainBearerOAuth: true,
+    dashboardUrl: "https://z.ai", defaultModel: "glm-5.3",
+    note: "Log in with your Z.ai (ZCode) coding-plan account",
+    models: ["glm-5.3"],
+    liveModels: false,
+    modelContextWindows: { "glm-5.3": 1_000_000 },
+    modelReasoningEfforts: { "glm-5.3": ZAI_GLM_53_REASONING_EFFORTS },
+    modelDefaultReasoningEfforts: { "glm-5.3": "max" },
+    modelMaxOutputTokens: { "glm-5.3": 131_072 },
+    modelSupportsReasoningSummaries: { "glm-5.3": true },
+    preserveReasoningContentModels: ["glm-5.3"],
   },
   // Zhipu's domestic BigModel platform: OpenAI-compatible pay-as-you-go on open.bigmodel.cn — a
   // different host and billing product from the `zai` coding-plan subscription above.

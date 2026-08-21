@@ -423,6 +423,16 @@ function anthropicKeyUsesBearer(provider: OcxProviderConfig): boolean {
   return provider.apiKeyTransport === "bearer";
 }
 
+/**
+ * True only for api.anthropic.com subscription OAuth, which needs the Claude Code fingerprint
+ * (anthropic-beta, CLI headers, forced Claude Code system block, tool-name prefixing). A
+ * `plainBearerOAuth` provider (e.g. the Z.ai Start Plan on zcode.z.ai) is OAuth-managed but must
+ * authenticate with a vanilla `Authorization: Bearer`, so it is deliberately excluded here.
+ */
+function usesClaudeCodeOAuth(provider: OcxProviderConfig): boolean {
+  return provider.authMode === "oauth" && provider.plainBearerOAuth !== true;
+}
+
 /** Map a Responses reasoning effort to an Anthropic extended-thinking budget (tokens, >= 1024). */
 function reasoningBudget(effort: string): number {
   switch (effort) {
@@ -548,7 +558,7 @@ function mergeAnthropicUsage(
 }
 
 function buildToolNameTransforms(provider: OcxProviderConfig): { toWire: (name: string) => string; fromWire: (name: string) => string } {
-  if (provider.authMode === "oauth") {
+  if (usesClaudeCodeOAuth(provider)) {
     return { toWire: applyClaudeToolPrefix, fromWire: stripClaudeToolPrefix };
   }
   if (provider.escapeBuiltinToolNames === true) {
@@ -875,6 +885,9 @@ function normalizeAnthropicInputSchema(schema: unknown): Record<string, unknown>
 
 export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetention?: "none" | "short" | "long"): ProviderAdapter {
   const isOAuth = provider.authMode === "oauth";
+  // Claude-native subscription OAuth (api.anthropic.com) vs. a plain-bearer OAuth gateway such as
+  // the Z.ai Start Plan — only the former gets the Claude Code fingerprint and forced system block.
+  const claudeCodeOAuth = usesClaudeCodeOAuth(provider);
   const toolNames = buildToolNameTransforms(provider);
   return {
     name: "anthropic",
@@ -884,7 +897,11 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
     async buildRequest(parsed: OcxParsedRequest, incoming?: IncomingMeta) {
       if (typeof provider.apiKey !== "string" || provider.apiKey.trim() === "") {
         if (isOAuth) {
-          throw new Error("anthropic oauth token missing — run ocx login anthropic");
+          throw new Error(
+            claudeCodeOAuth
+              ? "anthropic oauth token missing — run ocx login anthropic"
+              : "oauth token missing — run ocx login for this provider",
+          );
         }
         throw new Error("anthropic provider requires a non-empty apiKey (authMode: key)");
       }
@@ -907,7 +924,7 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         stream: parsed.stream,
         max_tokens: parsed.options.maxOutputTokens ?? DEFAULT_MAX_TOKENS,
       };
-      if (isOAuth) {
+      if (claudeCodeOAuth) {
         // Claude OAuth (Pro/Max) requires the first system block to be the Claude Code identity.
         body.system = [
           { type: "text", text: CLAUDE_CODE_SYSTEM_INSTRUCTION },
@@ -998,7 +1015,7 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         "Accept": parsed.stream ? "text/event-stream" : "application/json",
         "User-Agent": "@anthropic-ai/sdk/0.74.0",
       };
-      if (isOAuth) {
+      if (claudeCodeOAuth) {
         headers["Authorization"] = `Bearer ${provider.apiKey}`;
         headers["anthropic-beta"] = ANTHROPIC_OAUTH_BETA;
         // Match the real Claude Code CLI request fingerprint: a valid OAuth token with an empty
@@ -1008,7 +1025,9 @@ export function createAnthropicAdapter(provider: OcxProviderConfig, cacheRetenti
         headers["X-Claude-Code-Session-Id"] = claudeCodeSessionId(provider.apiKey);
         headers["x-client-request-id"] = crypto.randomUUID();
       } else {
-        if (anthropicKeyUsesBearer(provider)) headers["Authorization"] = `Bearer ${provider.apiKey}`;
+        // Plain-bearer OAuth gateways (plainBearerOAuth, e.g. Z.ai Start Plan) authenticate with a
+        // vanilla Bearer just like a bearer-transport key — no Anthropic OAuth fingerprint.
+        if (isOAuth || anthropicKeyUsesBearer(provider)) headers["Authorization"] = `Bearer ${provider.apiKey}`;
         else headers["x-api-key"] = provider.apiKey;
       }
       if (provider.headers) Object.assign(headers, provider.headers);

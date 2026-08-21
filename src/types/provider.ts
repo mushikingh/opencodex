@@ -304,6 +304,14 @@ export interface OcxProviderConfig {
    * providers whose registry entry declares authKind "local" (management API enforces).
    */
   authMode?: "key" | "forward" | "oauth" | "local";
+  /**
+   * Anthropic-adapter OAuth providers that are NOT api.anthropic.com and must authenticate with a
+   * plain `Authorization: Bearer <token>` (like the key path) rather than Anthropic's subscription
+   * OAuth fingerprint (anthropic-beta, Claude Code headers, forced Claude Code system block, tool
+   * prefixing). Set for the Z.ai Start Plan (zcode.z.ai/.../zcode-plan/anthropic), whose upstream
+   * rejects the Claude-native signature. Credential resolution/refresh still runs the oauth path.
+   */
+  plainBearerOAuth?: boolean;
   /** Allow an explicitly key/oauth provider to run without a credential (for keyless local proxies). */
   keyOptional?: boolean;
   /**

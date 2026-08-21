@@ -10,6 +10,7 @@ import { ANTHROPIC_OAUTH_BETA, AnthropicTokenError, loginAnthropic, refreshAnthr
 import { loginKimi, refreshKimiToken } from "./kimi";
 import { loginNous, NousTokenError, refreshNousToken, clearNousRefreshIntent, RefreshIntentIOError } from "./nous";
 import { loginChatGPT, refreshChatGPTToken } from "./chatgpt";
+import { loginZaiPlan, refreshZaiPlanToken } from "./zai-plan";
 import { loginAntigravity, refreshAntigravityToken } from "./google-antigravity";
 import { loginCursor, refreshCursorToken } from "./cursor";
 import { loginGithubCopilot, refreshGithubCopilotToken, validateCopilotApiBaseUrl } from "./github-copilot";
@@ -194,6 +195,15 @@ export const OAUTH_PROVIDERS: Record<string, OAuthProviderDef> = {
     refresh: refreshKimiToken,
     providerConfig: oauthConfig("kimi"),
     defaultModel: oauthDefaultModel("kimi"),
+  },
+  "zai-plan": {
+    login: (ctrl) => loginZaiPlan(ctrl),
+    refresh: refreshZaiPlanToken,
+    providerConfig: oauthConfig("zai-plan"),
+    defaultModel: oauthDefaultModel("zai-plan"),
+    // The Start Plan token path issues no refresh token and the zcode JWT is not refreshable out of
+    // band — never generate background refresh traffic; expiry is handled by re-running the login.
+    defaultRefreshPolicy: "disabled",
   },
   nous: {
     // Nous Portal device-grant login (RFC 8628) against portal.nousresearch.com.
